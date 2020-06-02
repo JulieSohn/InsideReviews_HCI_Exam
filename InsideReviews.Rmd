@@ -1,0 +1,1173 @@
+---
+title: 'Inside Reviews: Shiny Dashboard'
+author: "Karoline Guldhammer, Marie Louise Holm Møller and Julie Sohn"
+date: "2nd June 2020"
+runtime: html_document
+---
+
+## Libraries
+```{r setup, include=FALSE}
+library(shiny)
+library(shinyWidgets)
+library(shinydashboard)  
+library(shinycustomloader)      
+library(DT)                     
+library(tidyverse)
+library(tidytext)
+library(sjPlot) 
+library(ggplot2)
+library(plotly)
+library(shinyalert)
+library(dplyr)
+library(stopwords)
+library(reticulate)
+library(lubridate)
+library(shinyjs)
+library(RColorBrewer)
+```
+
+
+## The User Interface
+
+```{r}
+ui <- dashboardPage(
+  
+  # Title and a general info button
+  dashboardHeader(title = "Inside Reviews",
+                  tags$li(actionLink("openModal", label = "", icon = icon("info")),
+                          class = "dropdown")),
+  # Menu
+  dashboardSidebar(
+    sidebarMenu(
+      menuItem("Load Data", tabName ="load_data", icon = icon("table")),
+      menuItem("Inspect Data", tabName ="inspect_data", icon = icon("chart-area"), startExpanded = TRUE,
+               menuSubItem("Reviews and Ratings", tabName ="ratings_reviews", icon = icon("chart-area")),
+               menuSubItem("Topics and Sentiment", tabName = "over_time", icon = icon("chart-area")),
+               menuSubItem("Frequent Words", tabName = "frequent_words", icon = icon("chart-area"))
+      )
+    )
+  ),
+  
+  dashboardBody(
+    
+    # Make background continuous
+    tags$head(tags$style(HTML('
+       .skin-blue .left-side, .skin-blue .wrapper {
+                      background-color: #ecf0f5;
+                      }
+       '))),
+    
+    tabItems(
+      
+      ############################################################
+      # Load Data page
+      ############################################################
+      
+      tabItem(tabName = "load_data",
+              
+              h2("Upload Your Data and Gain Deeper Insights"),
+              tags$hr(),
+              
+              fluidRow(
+                box(title = "Upload Data", width= 12,
+                    fileInput("file1", 
+                              label = h5("Upload your data as a comma-separated file (CSV-format). Uploading may take a minute."),
+                              multiple = FALSE,
+                              accept = c(".csv")),
+                ),
+                
+                # Display the data
+                box(width = 12, title = "Uploaded Data", 
+                    tabPanel(title = "Dataset",
+                             DT::dataTableOutput("datas")
+                    )))
+      ),
+      
+      
+      ############################################################
+      # Rating and Review page
+      ############################################################
+      
+      tabItem(tabName = "ratings_reviews",
+              useShinyalert(), # for info button
+              
+              h2("Amount of Reviews and Average Star Ratings"),
+              br(),
+              
+              # The filtering box
+              fluidRow(
+                box(title = strong("Amount of Reviews Over Time"), width = 12,
+                    column(2,
+                           shinyjs::useShinyjs(),
+                           div(
+                             id = "Reviews_box",
+                             pickerInput("select_Xaxis_Reviews", 
+                                         label = h5("Define input for the x-axis"), 
+                                         choices = list("Reviews per month" = "Month",
+                                                        "Reviews per month and year" = "Yearmonth",
+                                                        "Reviews per year" = "Year"), 
+                                         selected = "Month",
+                                         options = list('actions-box' = TRUE),
+                                         multiple = F),     
+                             pickerInput("Selected_Year_Reviews",
+                                         label=h5("Filter by year"),
+                                         choices = list("2019", "2018","2017", "2016",
+                                                        "2015", "2014", "2013", "2012"),
+                                         selected = list("2019", "2018","2017", "2016",
+                                                         "2015", "2014", "2013", "2012"),
+                                         options = list('actions-box' = TRUE),
+                                         multiple = TRUE),
+                             pickerInput("Selected_Month_Reviews",
+                                         label=h5("Filter by month"),
+                                         choices=c("Jan"="01","Feb"="02","Mar"="03",
+                                                   "Apr"="04","May"="05","Jun"="06",
+                                                   "Jul"="07","Aug"="08", "Sep"="09",
+                                                   "Oct"="10", "Nov"="11", "Dec"="12"),
+                                         selected = c("01","02","03","04","05","06","07","08",
+                                                      "09", "10", "11", "12"),
+                                         options = list('actions-box' = TRUE),
+                                         multiple = TRUE),                             
+                             
+                             actionButton("resetReviews", "Reset plot")
+                           )),
+                    
+                    # The box plot
+                    column(10,
+                           box(width = 12,
+                               plotlyOutput("plotReviews", height = 400)),
+                           fluidRow(
+                             column(11,
+                                    "NB: Notice that the years may not have data from all months."),
+                             column(1,
+                                    actionButton("reviews_info","", icon("info"))))
+                    )
+                )),
+              
+              # The filtering box
+              fluidRow(
+                box(title = strong("Average Star Ratings Over Time"), width = 12,
+                    column(2,
+                           shinyjs::useShinyjs(),
+                           div(
+                             id = "Rankings_box",
+                             pickerInput("select_Xaxis_Rankings", 
+                                         label = h5("Define input for the x-axis"), 
+                                         choices = list("Ratings per month" = "Month",
+                                                        "Ratings per month and year" = "Yearmonth"), 
+                                         selected = "Month",
+                                         options = list('actions-box' = TRUE),
+                                         multiple = F),     
+                             pickerInput("Selected_Year_Rankings",
+                                         label=h5("Filter by year"),
+                                         choices = list("2019", "2018","2017", "2016",
+                                                        "2015", "2014", "2013", "2012"),
+                                         selected = list("2019", "2018","2017", "2016",
+                                                         "2015", "2014", "2013", "2012"),
+                                         options = list('actions-box' = TRUE),
+                                         multiple = TRUE),
+                             pickerInput("Selected_Month_Rankings",
+                                         label=h5("Filter by month"),
+                                         choices=c("Jan"="01","Feb"="02","Mar"="03",
+                                                   "Apr"="04","May"="05","Jun"="06",
+                                                   "Jul"="07","Aug"="08", "Sep"="09",
+                                                   "Oct"="10", "Nov"="11", "Dec"="12"),
+                                         selected = c("01","02","03","04","05","06","07","08",
+                                                      "09", "10", "11", "12"),
+                                         options = list('actions-box' = TRUE),
+                                         multiple = TRUE),                              
+                             
+                             actionButton("resetRankings", "Reset plot"))),
+                    
+                    # The box plot
+                    column(10,
+                           box(width = 12,
+                               plotlyOutput("plotRankings", height = 400),
+                               checkboxInput(inputId = "mean_rating_box", 
+                                             label = strong("Overlay of the average ratings across the chosen time period")
+                               )),
+                           # NB note
+                           fluidRow(
+                             column(11, 
+                                    "NB: Notice that the means are based on different amounts of reviews. Use the plot displaying the amount of reviews above to inspect how many reviews a specific mean rating is based on."),
+                             column(1,
+                                    actionButton("ratings_info","", icon("info"))))
+                    )
+                ))), # end of Ratings and Reviews tab
+      
+      
+      ############################################################
+      # Topic and Sentiment page
+      ############################################################
+      
+      tabItem(tabName = "over_time",
+              useShinyalert(), # for info button
+              
+              h2("Amount of Topic Mentions and Average Sentiment Scores"),
+              br(),
+              
+              # The filtering box
+              fluidRow(
+                box(
+                  title = strong("Topic Mentions Over Time"), width = 12,
+                  column(2,
+                         shinyjs::useShinyjs(),
+                         div(
+                           id = "Topic_box",
+                           pickerInput("select_Xaxis_Topics_over_time", 
+                                       label = h5("Define input for the x-axis"), 
+                                       choices = list("Topic mentions per month" = "Month",
+                                                      "Topic mentions per month and year" = "Yearmonth",
+                                                      "Topic mentions per year" = "Year"), 
+                                       selected = 1,
+                                       options = list('actions-box' = TRUE),
+                                       multiple = F),
+                           pickerInput("topic_filter",
+                                       label = h5("Filter by Topic"),
+                                       choices = list("Money" = "Money","Brand" = "Brand",
+                                                      "Return Service" = "Return","Products" = "Products",
+                                                      "Customer Service" = "Customer Service","Delivery" = "Delivery",
+                                                      "Uncategorized" = "Uncategorized"),
+                                       selected = c("Money", "Brand", "Return", "Products", "Customer Service", "Delivery", "Uncategorized"),
+                                       options = list('actions-box' = TRUE),
+                                       multiple = TRUE),
+                           pickerInput("select_year_topic",
+                                       label=h5("Filter by year"),
+                                       choices = list("2019", "2018","2017", "2016","2015", "2014", "2013", "2012"),
+                                       selected = "2019",
+                                       options = list('actions-box' = TRUE),
+                                       multiple = TRUE),
+                           pickerInput("select_month_topic",
+                                       label=h5("Filter by month"),
+                                       choices=c("Jan"="01","Feb"="02","Mar"="03",
+                                                 "Apr"="04","May"="05","Jun"="06",
+                                                 "Jul"="07","Aug"="08", "Sep"="09",
+                                                 "Oct"="10", "Nov"="11", "Dec"="12"),
+                                       selected = c("01","02","03","04","05","06","07","08",
+                                                    "09", "10", "11", "12"),
+                                       options = list('actions-box' = TRUE),
+                                       multiple = TRUE),
+                           actionButton("resetTopics", "Reset plot"))),
+                  
+                  
+                  # The plot box
+                  column(10,
+                         box(width = 12,
+                             plotlyOutput("plotTopics", height = 400),
+                         ),
+                         fluidRow(
+                           column(11),
+                           column(1,
+                                  actionButton("topic_info","", icon("info"))))
+                  )
+                )),
+              
+              # The filtering box
+              fluidRow(
+                box(title = strong("Average Sentiment Scores Over Time"), width = 12,
+                    column(2,
+                           shinyjs::useShinyjs(),
+                           div(
+                             id = "Sentiment_box",
+                             pickerInput("select_Xaxis_Senti_over_time", 
+                                         label = h5("Define input for the x-axis"), 
+                                         choices = list("Avg. sentiment scores per month" = "Month",
+                                                        "Avg. sentiment scores per month and year" = "Yearmonth"), 
+                                         selected = 1,
+                                         options = list('actions-box' = TRUE),
+                                         multiple = F),
+                             pickerInput("topic_filter_sentiment",
+                                         label = h5("Filter by Topic"),
+                                         choices = list("Money" = "Money","Brand" = "Brand",
+                                                        "Return Service" = "Return","Products" = "Products",
+                                                        "Customer Service" = "Customer Service","Delivery" = "Delivery",
+                                                        "Uncategorized" = "Uncategorized"),
+                                         selected = c("Money", "Brand", "Return", "Products", "Customer Service", "Delivery", "Uncategorized"),
+                                         options = list('actions-box' = TRUE),
+                                         multiple = TRUE),
+                             pickerInput("select_year_sentiment",
+                                         label=h5("Filter by year"),
+                                         choices = list("2019", "2018","2017", "2016","2015", "2014", "2013", "2012"),
+                                         selected = "2019",
+                                         options = list('actions-box' = TRUE),
+                                         multiple = TRUE),
+                             pickerInput("select_month_sentiment",
+                                         label=h5("Filter by month"),
+                                         choices=c("Jan"="01","Feb"="02","Mar"="03",
+                                                   "Apr"="04","May"="05","Jun"="06",
+                                                   "Jul"="07","Aug"="08", "Sep"="09",
+                                                   "Oct"="10", "Nov"="11", "Dec"="12"),
+                                         selected = c("01","02","03","04","05","06","07","08",
+                                                      "09", "10", "11", "12"),
+                                         options = list('actions-box' = TRUE),
+                                         multiple = TRUE),
+                             actionButton("resetSentiment", "Reset plot"))),
+                    
+                    # The plot box
+                    column(10,
+                           box(width = 12,
+                               plotlyOutput("plotSentiment", height = 400),
+                               checkboxInput(inputId = "mean_sentiment_box", 
+                                             label = strong("Overlay of the average sentiment score across the chosen time period"))
+                           ),
+                           fluidRow(
+                             column(11),
+                             column(1,
+                                    actionButton("senti_info","", icon("info"))))
+                    )
+                )) 
+      ), # end of Topic and Sentiment tab
+      
+      
+      
+      ############################################################
+      # Frequent Words page 
+      ############################################################
+      
+      tabItem(tabName = "frequent_words",
+              h2("Top 10 Most Frequent Two-Word Phrases"),
+              br(),
+              
+              # The filtering box
+              fluidRow(
+                box(title = strong("Frequent Words Sorted by Topic"), width = 12,
+                    column(2,
+                           shinyjs::useShinyjs(),
+                           div(
+                             id = "BigramsTopic_box",
+                             
+                             pickerInput("words_topic",
+                                         label = h5("Filter by topic"),
+                                         choices = list("Money" = "Money","Brand" = "Brand",
+                                                        "Return Service" = "Return","Products" = "Products",
+                                                        "Customer Service" = "Customer Service","Delivery" = "Delivery"),
+                                         selected ="Money",
+                                         options = list('actions-box' = TRUE),
+                                         multiple = F),
+                             
+                             pickerInput("words_year", 
+                                         label = h5("Filter by year"),
+                                         choices = list("2019", "2018","2017", "2016","2015", "2014", "2013", "2012"),
+                                         selected = c("2019"),
+                                         options = list('actions-box' = TRUE),
+                                         multiple = T),
+                             
+                             pickerInput("words_month",
+                                         label = h5("Filter by month"),
+                                         choices = c("Jan"="01","Feb"="02","Mar"="03",
+                                                     "Apr"="04","May"="05","Jun"="06",
+                                                     "Jul"="07","Aug"="08", "Sep"="09",
+                                                     "Oct"="10", "Nov"="11", "Dec"="12"),
+                                         selected = c("01","02","03","04","05","06","07",
+                                                      "08", "09", "10", "11", "12"),
+                                         options = list('actions-box' = TRUE),
+                                         multiple = T),
+                             actionButton("resetBigramsTopic", "Reset plot"),
+                             br(), br(), 
+                             br(),
+                             checkboxInput(inputId = "more_info_bigramsT", 
+                                           label = strong("Display an additional plot for comparison")) 
+                           )),
+                    
+                    # The plot box
+                    column(10, 
+                           box(width = 12,
+                               plotlyOutput("plotBigramsTopic", height = 400)),
+                           fluidRow(
+                             column(11),
+                             column(1,
+                                    actionButton("bigrams_info","", icon("info"))))),
+                    
+                    # Add extra plot if conditional panel is checked off by the user
+                    # The filtering box
+                    column(2,
+                           shinyjs::useShinyjs(),
+                           div(
+                             id = "BigramsTopic_compare_tab",
+                             conditionalPanel(condition = "input.more_info_bigramsT == true",
+                                              pickerInput("words_topicx", 
+                                                          label = h5("Filter by Topic"),
+                                                          choices = list("Money" = "Money","Brand" = "Brand",
+                                                                         "Return Service" = "Return","Products" = "Products",
+                                                                         "Customer Service" = "Customer Service","Delivery" = "Delivery",
+                                                                         "Uncategorized" = "Uncategorized"),
+                                                          selected = NULL, options = list('actions-box' = TRUE), multiple = F),
+                                              pickerInput("words_yearx", 
+                                                          label = h5("Filter by Year"),
+                                                          choices = list("2019", "2018","2017", "2016","2015", "2014", "2013", "2012"),
+                                                          selected = "2019",
+                                                          options = list('actions-box' = TRUE),
+                                                          multiple = T),
+                                              pickerInput("words_monthx",
+                                                          label = h5("Filter by Month"),
+                                                          choices = c("Jan"="01","Feb"="02","Mar"="03","Apr"="04","May"="05","Jun"="06",
+                                                                      "Jul"="07","Aug"="08", "Sep"="09","Oct"="10", "Nov"="11", "Dec"="12"),
+                                                          selected = c("01","02","03","04","05","06","07","08", "09", "10", "11", "12"),
+                                                          options = list('actions-box' = TRUE),
+                                                          multiple = T),
+                                              actionButton("resetBigram_topic_hide", "Reset plot"))
+                           )),
+                    # The plot box
+                    column(10,
+                           conditionalPanel(condition = "input.more_info_bigramsT == true",
+                                            box(width = 12,
+                                                plotlyOutput("moreTopics_bi"))
+                           ))
+                )), 
+              
+              
+              # The filtering box
+              fluidRow(
+                box(title = strong("Frequent Words Sorted by Sentiment"), width = 12,
+                    column(2,
+                           shinyjs::useShinyjs(),
+                           div(
+                             id = "BigramsSenti_tab",
+                             
+                             pickerInput("filter_bigrams_sentiment",
+                                         label = h5("Filter by sentiment"),
+                                         choices = list("Positive" = "Positive",
+                                                        "Negative" = "Negative"),
+                                         selected ="Positive",
+                                         options = list('actions-box' = TRUE),
+                                         multiple = F),
+                             
+                             
+                             pickerInput("filter_bigrams_year",
+                                         label = h5("Filter by year"),
+                                         choices = list("2019", "2018","2017", "2016",
+                                                        "2015", "2014", "2013", "2012"),
+                                         selected ="2019",
+                                         options = list('actions-box' = TRUE),
+                                         multiple = T),
+                             
+                             pickerInput("filter_bigrams_month",
+                                         label = h5("Filter by month"),
+                                         choices = c("Jan"="01","Feb"="02","Mar"="03",
+                                                     "Apr"="04","May"="05","Jun"="06",
+                                                     "Jul"="07","Aug"="08", "Sep"="09",
+                                                     "Oct"="10", "Nov"="11", "Dec"="12"),
+                                         selected = c("01","02","03","04","05","06","07",
+                                                      "08", "09", "10", "11", "12"),
+                                         options = list('actions-box' = TRUE), multiple = T),
+                             actionButton("resetBigramsSenti", "Reset plot"),
+                             br(), br(), 
+                             br(),
+                             checkboxInput(inputId = "more_info_bigrams_Senti", 
+                                           label = strong("Display an additional plot for comparison"))
+                           )),
+                    
+                    # The plot box
+                    column(10,
+                           box(width = 12,
+                               plotlyOutput("plotBigramsSentiment", height = 400)
+                           ),
+                           fluidRow(
+                             column(11),
+                             column(1,
+                                    actionButton("bigrams_info2","", icon("info"))))),
+                    
+                    # Add extra plot if conditional panel is checked off by the user
+                    # The filtering box
+                    column(2,
+                           shinyjs::useShinyjs(),
+                           div(
+                             id = "BigramsSenti_compare_tab",
+                             conditionalPanel(condition = "input.more_info_bigrams_Senti == true",
+                                              pickerInput("filter_more_senti", 
+                                                          label = h5("Filter by sentiment"),
+                                                          choices = list("Positive" = "Positive",
+                                                                         "Negative" = "Negative"),
+                                                          selected =NULL,
+                                                          options = list('actions-box' = TRUE),
+                                                          multiple = F),
+                                              pickerInput("filter_more_year", 
+                                                          label = h5("Filter by year"),
+                                                          choices = list("2019", "2018","2017", "2016","2015", "2014", "2013", "2012"),
+                                                          selected ="2019",
+                                                          options = list('actions-box' = TRUE),
+                                                          multiple = T),
+                                              pickerInput("filter_more_month",
+                                                          label = h5("Filter by month"),
+                                                          choices = c("Jan"="01","Feb"="02","Mar"="03","Apr"="04","May"="05","Jun"="06",
+                                                                      "Jul"="07","Aug"="08", "Sep"="09","Oct"="10", "Nov"="11", "Dec"="12"),
+                                                          selected = c("01","02","03","04","05","06","07","08", "09", "10", "11", "12"),
+                                                          options = list('actions-box' = TRUE), multiple = T),
+                                              actionButton("resetBigram_hide", "Reset plot")))),
+                    column(10,
+                           conditionalPanel(condition = "input.more_info_bigrams_Senti == true",
+                                            box(width = 12,
+                                                plotlyOutput("plotMoreSenti_bigrams")))
+                    )))
+      ) # end of Frequent words tab
+    ) # end of tabItems (listing all content)
+  ) # end of body
+) # ui end
+
+```
+
+
+## The Server
+
+```{r}
+server <- function(input, output) {
+  
+  # Information button in the header
+  observeEvent(input$openModal, {
+    showModal(modalDialog(easyClose = TRUE,
+                          title = "Information About the Dashboard",
+                          HTML("This application includes two parts: load a data set that you would like to inspect and visualize the data. You will find a tab for both activities in the menu to the left. <br>
+<br>
+On the first page, you can upload a dataset as a csv-file and examine it by, for instance, sorting, filtering and searching through it. Spend some time familiarizing yourself with the data. <br>
+<br>
+There are three pages for inspecting data. Each of them contains two different plots. <br>
+<br>
+1) The first page, Rating and Reviews, lets you inspect how the reviews and star ratings have changed over the years. The first plot on this page lets you inspect the amount of reviews per year and months, while the second plot lets you have a look at the development in the average star rating over time. <br>
+<br>
+2) The second page, Topic and Sentiment, focuses on temporal trends in the different topics and sentiment categories. What are your users saying about your products, delivery service, return service, customer service, your brand as whole and how you handle money related issues? The first of the two plots shows the amount of topics mentioned in reviews throughout the years and months. The second plot involves the development of different topics over time in relation to the two sentiment categories, i.e. whether the reviews of a given topic have been of positive or negative sentiment. <br>
+<br>
+3) The third and final page for data inspection, Frequent Words, shows the most used two-word phrases (also referred to as bigrams). This will let you inspect what many of your customers are writing without having to read through all reviews. You can filter the data by topics and sentiment categories. The first plot on this page depicts the top 10 most frequent bigrams used for a given topic, and the second plot illustrated the top 10 bigrams for a given sentiment category. <br>
+<br>
+Each time you shift between pages, the plots will stay the way you left them - so feel free to go back and forth. At any time, you can save the plot, make some changes, and save it again. <br>
+<br>
+Enjoy the app!<br>
+<br>
+Best wishes, <br>
+Julie Sohn (e-mail: julie@sohn.dk) <br>
+Karoline Guldhammer (e-mail: karolineguldhammer@msn.com) <br>
+Marie Louise Holm Møller (e-mail: marie_louise_holm_moller@hotmail.com) <br>
+")))
+    
+  })
+  
+  
+  data <- reactive({ 
+    req(input$file1)
+    inFile <- input$file1 
+    df <- read.csv(inFile$datapath, sep = ",")
+    
+    df$Yearmonth <- sub("^(\\d{4}-\\d{2}).*$", "\\1", df$ReviewDate)
+    df$Yearmonth <- as.factor(df$Yearmonth)
+    df$Month <- substr(df$ReviewDate,6,7)
+    
+    df$Year <- as.factor(df$Year)
+    df$Topic <- as.factor(df$Topic)
+    df$Month <- as.factor(df$Month)
+    df$Senti <- ifelse(df$Sentiment >0, 'Positive', 'Negative')
+    
+    df$Senti <- as.factor(df$Senti)
+    
+    stopwords("da")
+    stopwords_regex = paste(stopwords('da'), collapse = '\\b|\\b')
+    stopwords_regex = paste0('\\b', stopwords_regex, '\\b')
+    df$stop = stringr::str_replace_all(df$Tokenized_Sentence, stopwords_regex, '')
+    
+    return(df)
+  })
+  
+  ############################################################
+  # Load Data tab
+  ############################################################
+  
+  output$datas <- renderDT(data(),
+                           filter = "top",
+                           options=list(scrollX = TRUE))
+  
+  
+  ############################################################
+  # Review and Ratings
+  ############################################################
+  
+  # Info button for review plot
+  observeEvent(input$reviews_info, { 
+    showModal(
+      modalDialog(easyClose = TRUE,
+                  title = "Plot Information", 
+                  HTML("This plot allows you to examine the amount of reviews made over a chosen period of time. You can change this time period in the filter boxes to the left.<br>
+<br>
+You can always set the filtering options to their starting point by pressing the reset-button.<br>
+<br>
+Use the button at the top right corner of the plot to zoom or pan the image, to reset the axes of the plot after zooming, or to download the plot as a png. <br>
+<br>
+Notice that if you, for instance, want to look at the amount of reviews per month and additionally select more than one year, the plot will display the aggregated number of reviews for the chosen years.<br>
+<br>
+Be aware of changing values on the y-axis as you change the filtering options.
+"))
+    )
+  })
+  
+  # Info button for star rating plot
+  observeEvent(input$ratings_info, { 
+    showModal(
+      modalDialog(easyClose = TRUE,
+                  title = "Plot Information", 
+                  HTML("This plot allows you to examine the average star rating across a given period of time. You can change this time period in the filter boxes to the left.<br>
+<br>
+You can always set the filtering options back to their starting point by pressing the reset-button.<br>
+<br>
+Use the button at the top right corner of the plot to zoom or pan the image, to reset the axes of the plot after zooming, or to download the plot as a png.<br> 
+<br>
+Notice that you can also add a horizontal line to the plot, representing the overall average in star rating for the chosen time period.
+"))
+    )
+  })
+  
+  # Plot for reviews
+  filtered_data_reviews <- reactive({
+    dplyr::filter(data()[!duplicated(data()[2]),], 
+                  Year %in% input$Selected_Year_Reviews,
+                  Month %in% input$Selected_Month_Reviews)
+  })
+  
+  plotReviews_reactive <- reactive({
+    
+    x = aes_string(x=input$select_Xaxis_Reviews)
+    plotReviews <- ggplot(filtered_data_reviews(), x) +
+      geom_histogram(aes(fill = Year),
+                     position = "dodge",
+                     color = "black", size = .2,
+                     stat="count")+
+      scale_fill_brewer(palette="Blues") +
+      theme_classic()+
+      theme(legend.title = element_blank())+
+      ylab("Number of Reviews")
+    
+    ggplotly(plotReviews) %>% 
+      layout(dragmode = "zoom")%>%
+      config(displayModeBar = TRUE) %>%                     # Display the bar
+      config(displaylogo = FALSE) %>%                       # Remove the logo
+      config(modeBarButtonsToRemove = c("zoomIn2d",         # Remove certain buttons
+                                        "zoomOut2d", 
+                                        "select2d",
+                                        "lasso2d", 
+                                        "autoScale2d",
+                                        "toggleSpikelines", 
+                                        "hoverClosestCartesian",
+                                        "hoverCompareCartesian")) %>%
+      layout(yaxis=list(fixedrange=TRUE))                   # Fix the y-axis, no zoom
+    
+  })
+  
+  output$plotReviews <- renderPlotly({
+    req(plotReviews_reactive())
+    plotReviews_reactive()
+  })
+  
+  observeEvent(input$resetReviews, { 
+    reset("Reviews_box")
+  })
+  
+  
+  # Plot for ratings
+  filtered_data_rankings <- reactive({
+    dplyr::filter(data()[!duplicated(data()[2]),], 
+                  Year %in% input$Selected_Year_Rankings,
+                  Month %in% input$Selected_Month_Rankings)
+  })
+  
+  
+  plotRankings_reactive <- reactive({
+    req(filtered_data_rankings())
+    
+    f_plot=aggregate(Ranking ~ + Year + Yearmonth + Month, data=filtered_data_rankings(), FUN=mean)
+    f_plot$Yearmonth = as.factor(f_plot$Yearmonth)
+    f_plot$Year = as.factor(f_plot$Year)
+    f_plot$Ranking = format(round(f_plot$Ranking, 2), nsmall = 2)
+    f_plot$Ranking = as.numeric(f_plot$Ranking)
+    
+    m <- req(filtered_data_rankings())
+    Mean <- mean(m[["Ranking"]]) # Mean ranking score dependent on the chosen x-axis
+    
+    
+    plotRanking <- ggplot(f_plot, aes_string(x=input$select_Xaxis_Rankings)) +
+      geom_line(aes(y=Ranking, group = Year, col = Year))+
+      geom_point(aes(y=Ranking, col = Year))+
+      scale_color_brewer(palette="Set2")+
+      theme_classic()+
+      ylim(min(data()$Ranking), max(data()$Ranking))+
+      theme(legend.title = element_blank())+
+      ylab("Rating")
+    
+    plotRankingly <- ggplotly(plotRanking) %>%
+      layout(dragmode = "zoom")%>%
+      config(displayModeBar = TRUE) %>%                     # Display the bar
+      config(displaylogo = FALSE) %>%                       # Remove the logo
+      config(modeBarButtonsToRemove = c("zoomIn2d",         # Remove certain buttons
+                                        "zoomOut2d", 
+                                        "select2d",
+                                        "lasso2d", 
+                                        "autoScale2d",
+                                        "toggleSpikelines", 
+                                        "hoverClosestCartesian",
+                                        "hoverCompareCartesian")) %>% 
+      layout(yaxis=list(fixedrange=TRUE))                   # Fix the y-axis, no zoom
+    
+    
+    
+    if(input$mean_rating_box == FALSE){
+      plotRankingly
+    }
+    else if (input$mean_rating_box == TRUE){
+      plotlytized <- plotRanking + geom_hline(aes(yintercept = Mean), color="black", linetype="dashed", size=.75)
+      
+      ggplotly(plotlytized)%>%
+        layout(dragmode = "zoom")%>%
+        config(displayModeBar = TRUE) %>%                     # Display the bar
+        config(displaylogo = FALSE) %>%                       # Remove the logo
+        config(modeBarButtonsToRemove = c("zoomIn2d",         # Remove certain buttons
+                                          "zoomOut2d",
+                                          "select2d",
+                                          "lasso2d",
+                                          "autoScale2d",
+                                          "toggleSpikelines", 
+                                          "hoverClosestCartesian",
+                                          "hoverCompareCartesian")) %>% 
+        
+        layout(yaxis=list(fixedrange=TRUE))                   # Fix the y-axis, no zoom
+    }
+    
+  })
+  
+  output$plotRankings <- renderPlotly({
+    req(plotRankings_reactive())
+    plotRankings_reactive()
+  })
+  
+  observeEvent(input$resetRankings, { 
+    reset("Rankings_box")
+  })
+  
+  
+  
+  ############################################################
+  # Topic and Sentiment page
+  ############################################################
+  
+  # Info button for Topic plot (over time page)
+  observeEvent(input$topic_info, { 
+    showModal(
+      modalDialog(easyClose = TRUE,
+                  title = "Plot Information", 
+                  HTML("This plot allows you to examine the different topics mentioned in reviews during a given time period. You can change this time period in the filter boxes to the left.<br>
+<br>
+You can always set the filtering options back to their starting point by pressing the reset-button.<br>
+<br>
+Use the button at the top right corner of the plot to zoom or pan the image, to reset the axes of the plot after zooming, or to download the plot as a png. <br>
+<br>
+Notice that if you, for instance, want to look at the number of topics per month and additionally select more than one year, the plot will display the aggregated number of reviews for the chosen years.<br>
+<br>
+Be aware of changing values on the y-axis as you change the filtering options.
+"))
+    )
+  })
+  
+  # Info button for Sentiment plot (over time page)
+  observeEvent(input$senti_info, { 
+    showModal(
+      modalDialog(easyClose = TRUE,
+                  title = "Plot Information", 
+                  HTML("This plot allows you to examine the average sentiment scores across a given period of time. You can change this time period in the filter boxes to the left.<br>
+<br>
+You can always set the filtering options back to their starting point by pressing the reset-button.<br>
+<br>
+Use the button at the top right corner of the plot to zoom or pan the image, to reset the axes of the plot after zooming, or to download the plot as a png. <br>
+<br>
+The grey line in the plot represents the point where the sentiment changes from positive (above 0) to negative (below 0).<br>
+<br>
+Notice that you can also add a horizontal line to the plot, representing the average sentiment score for the chosen time period.
+"))
+    )
+  })    
+  
+  # Plot topics over time
+  filtered_data2 <- reactive({
+    
+    filter(data(),
+           Topic %in% input$topic_filter,
+           Year %in% input$select_year_topic,
+           Month %in% input$select_month_topic)
+  })
+  
+  
+  plot_ot_Topic <- reactive({
+    req(filtered_data2())
+    
+    x = aes_string(x=input$select_Xaxis_Topics_over_time)
+    p <- ggplot(filtered_data2(), x) +
+      geom_bar(aes(fill = Topic), position = "dodge", 
+               color = "black", size = .2,
+               stat = "count")+
+      scale_fill_brewer(palette="Purples")+
+      theme_classic()+
+      theme(legend.title = element_blank())+
+      ylab("Number of Mentions")
+    
+    
+    ggplotly(p)%>%
+      layout(dragmode = "zoom")%>%
+      config(displayModeBar = TRUE) %>%                     # Display the bar
+      config(displaylogo = FALSE) %>%                       # Remove the logo
+      config(modeBarButtonsToRemove = c("zoomIn2d",         # Remove certain buttons
+                                        "zoomOut2d", 
+                                        "select2d",
+                                        "autoScale2d",
+                                        "lasso2d", 
+                                        "toggleSpikelines", 
+                                        "hoverClosestCartesian",
+                                        "hoverCompareCartesian")) %>% 
+      layout(yaxis=list(fixedrange=TRUE))                   # Fix the y-axis, no zoom
+  })
+  
+  output$plotTopics <- renderPlotly({
+    req(plot_ot_Topic())
+    plot_ot_Topic()
+  })
+  
+  
+  # Plot for sentiment over time
+  filtered_data3 <- reactive({
+    filter(data(), 
+           Topic %in% input$topic_filter_sentiment,
+           Year %in% input$select_year_sentiment,
+           Month %in% input$select_month_sentiment)
+  })
+  
+  
+  plot_sentscore <- reactive({
+    
+    library(lubridate)
+    for_plot=aggregate(Sentiment ~ + Year + Yearmonth + Month + Topic, data=filtered_data3(), FUN=mean)
+    for_plot$Yearmonth = as.factor(for_plot$Yearmonth)
+    for_plot$Sentiment = format(round(for_plot$Sentiment, 2), nsmall = 2)
+    for_plot$Sentiment = as.numeric(for_plot$Sentiment)
+    
+    x = aes_string(x=input$select_Xaxis_Senti_over_time)
+    
+    p <- ggplot(for_plot, x)+
+      geom_line(aes(y=Sentiment, group=Year, col=Topic))+
+      geom_point(aes(y=Sentiment, group=Year, col=Topic))+
+      scale_color_brewer(palette="Set2")+
+      geom_abline(slope = 0, intercept = 0, col = 'azure4', alpha = 0.3,  linetype="dashed") +
+      theme_classic()+
+      theme(legend.title = element_blank())
+    
+    j <- req(filtered_data3())
+    Mean <- mean(j[["Sentiment"]]) # Mean sentiment score dependent on the chosen x-axis
+    
+    
+    ply <- ggplotly(p)%>%
+      layout(dragmode = "zoom")%>%
+      config(displayModeBar = TRUE) %>%                     # Display the bar
+      config(displaylogo = FALSE) %>%                       # Remove the logo
+      config(modeBarButtonsToRemove = c("zoomIn2d",         # Remove certain buttons
+                                        "zoomOut2d", 
+                                        "select2d",
+                                        "lasso2d", 
+                                        "autoScale2d",
+                                        "toggleSpikelines", 
+                                        "hoverClosestCartesian",
+                                        "hoverCompareCartesian")) %>%
+      layout(yaxis=list(fixedrange=TRUE))                   # Fix the y-axis, no zoom
+    
+    if(input$mean_sentiment_box == FALSE){
+      ply
+    }
+    else if (input$mean_sentiment_box == TRUE){
+      p_tized <- p + geom_hline(aes(yintercept = Mean), color="black", linetype="dashed", size=.75)
+      
+      ggplotly(p_tized)%>%
+        layout(dragmode = "zoom")%>%
+        config(displayModeBar = TRUE) %>%                     # Display the bar
+        config(displaylogo = FALSE) %>%                       # Remove the logo
+        config(modeBarButtonsToRemove = c("zoomIn2d",         # Remove certain buttons
+                                          "zoomOut2d",
+                                          "select2d",
+                                          "lasso2d",
+                                          "toggleSpikelines", 
+                                          "autoScale2d",
+                                          "hoverClosestCartesian",
+                                          "hoverCompareCartesian")) %>% 
+        
+        layout(yaxis=list(fixedrange=TRUE))                   # Fix the y-axis, no zoom
+    }
+  })
+  
+  output$plotSentiment <- renderPlotly({
+    req(plot_sentscore())
+    plot_sentscore()
+  })
+  
+  
+  # Reset buttons
+  observeEvent(input$resetTopics, { 
+    reset("Topic_box")
+  })
+  
+  observeEvent(input$resetSentiment, { 
+    reset("Sentiment_box")
+  })
+  
+  
+  ############################################################
+  # Frequent Words page
+  ############################################################
+  
+  # Info button for bigram plot of topics
+  observeEvent(input$bigrams_info, { 
+    showModal(
+      modalDialog(easyClose = TRUE,
+                  title = "Plot Information", 
+                  HTML("This plot allows you to examine the most frequent two-word phrases within a topic across a given period of time. You can change the topic and time period in the filter boxes to the left, and you can always set the filtering options back to their starting point by pressing the reset-button.<br>
+<br>
+If you want to directly compare for instance the development for a specific topic from 2018 to 2019, you can check off the “Compare topic with another topic, year or month” button.<br> 
+<br>
+Notice that if you choose to look at more than one year or one month at a time, the plot will display an aggregated number of most frequent two-word phrases for the given topic.
+"))
+    )
+  })
+  
+  # Info button for Sentiment plot (over time page)
+  observeEvent(input$bigrams_info2, { 
+    showModal(
+      modalDialog(easyClose = TRUE,
+                  title = "Plot Information", 
+                  HTML("This plot allows you to examine the most frequent two-word phrases within a sentiment category across a given period of time. You can change the sentiment category and time period in the filter boxes to the left, and you can always set the filtering options back to their starting point by pressing the reset-button.<br>
+<br>
+If you want to directly compare for instance the development for positive sentences from 2018 to 2019, you can check off the “Compare sentiment with another valence, year or month” button. <br>
+<br>
+Notice that if you choose to look at more than one year or one month at a time, the plot will display an aggregated number of most frequent two-word phrases for the given sentiment category.<br>
+"))
+    )
+  }) 
+  
+  
+  # Plot bigrams for topic
+  filtered_data_bigrams_topics <- reactive({
+    dplyr::filter(data(), 
+                  Year %in% input$words_year,
+                  Month %in% input$words_month,
+                  Topic %in% input$words_topic)
+  })
+  
+  plot_wordsTopic <- reactive({
+    
+    filtered_data_bigrams_topics() %>%
+      unnest_tokens(output = word, input = stop, token = "ngrams", n = 2) %>% 
+      drop_na(word) %>%
+      separate(word, c("word1", "word2"), sep = " ") %>% 
+      filter(!word1 %in% stop_words$word) %>%
+      filter(!word2 %in% stop_words$word) %>% 
+      unite(word,word1, word2, sep = " ") %>% 
+      count(word, sort = TRUE) %>% 
+      slice(1:10)
+  })
+  
+  plot_wordsTopic1 <- reactive({  
+    p <- ggplot(plot_wordsTopic()) +
+      geom_bar(aes(reorder(word, n),n), stat = "identity", fill = "skyblue4", color = "black", size = 0.2) +
+      theme_minimal() +
+      ylim(0,360)+
+      coord_flip() +
+      labs(
+        caption = "Data Source: TrustPilot Reviews of Zalando",
+        y = 'Number of mentions',
+        x = 'Words')
+    
+    ggplotly(p) %>% 
+      config(displayModeBar = TRUE) %>%                     # Display the bar
+      config(displaylogo = FALSE) %>%                       # Remove the logo
+      config(modeBarButtonsToRemove = c("zoomIn2d",         # Remove certain buttons
+                                        "zoomOut2d", 
+                                        "select2d",
+                                        "lasso2d", 
+                                        "autoScale2d",
+                                        "toggleSpikelines", 
+                                        "hoverClosestCartesian",
+                                        "hoverCompareCartesian")) %>% 
+      layout(xaxis=list(fixedrange=TRUE)) %>%               # Fix the x-axis, no zoom
+      layout(yaxis=list(fixedrange=TRUE))                   # Fix the y-axis, no zoom
+    
+  })
+  
+  
+  output$plotBigramsTopic <- renderPlotly({
+    req(plot_wordsTopic1())
+    plot_wordsTopic1()
+  })
+  
+  observeEvent(input$resetBigramsTopic, { 
+    reset("BigramsTopic_box")
+  })
+  
+  
+  # Conditional panel for bigrams - Topics
+  observeEvent(input$resetBigram_topic_hide, { 
+    reset("BigramsTopic_compare_tab")
+  })
+  
+  fil <- reactive({
+    dplyr::filter(data(), 
+                  Year %in% input$words_yearx,
+                  Month %in% input$words_monthx,
+                  Topic %in% input$words_topicx)
+  })
+  
+  plot_condi<- reactive({
+    
+    fil() %>% 
+      unnest_tokens(output = word, input = stop, token = "ngrams", n = 2) %>% 
+      drop_na(word) %>%
+      separate(word, c("word1", "word2"), sep = " ") %>% 
+      filter(!word1 %in% stop_words$word) %>%
+      filter(!word2 %in% stop_words$word) %>% 
+      unite(word,word1, word2, sep = " ") %>% 
+      count(word, sort = TRUE) %>% 
+      slice(1:10)
+  })
+  
+  plot_condi1 <- reactive({  
+    p <- ggplot(plot_condi()) +
+      geom_bar(aes(reorder(word, n),n), stat = "identity",fill = "skyblue3",  color = "black", size = 0.2) +
+      theme_minimal() +
+      ylim(0,360) +
+      coord_flip() +
+      labs(
+        caption = "Data Source: TrustPilot Reviews of Zalando",
+        y = 'Number of mentions',
+        x = 'Words')
+    
+    ggplotly(p) %>% 
+      config(displayModeBar = TRUE) %>%                     # Display the bar
+      config(displaylogo = FALSE) %>%                       # Remove the logo
+      config(modeBarButtonsToRemove = c("zoomIn2d",         # Remove certain buttons
+                                        "zoomOut2d", 
+                                        "select2d",
+                                        "lasso2d", 
+                                        "autoScale2d",
+                                        "toggleSpikelines", 
+                                        "hoverClosestCartesian",
+                                        "hoverCompareCartesian")) %>%
+      layout(xaxis=list(fixedrange=TRUE)) %>%               # Fix the x-axis, no zoom
+      layout(yaxis=list(fixedrange=TRUE))                   # Fix the y-axis, no zoom
+    
+  })
+  
+  output$moreTopics_bi <- renderPlotly({
+    req(plot_condi1())
+    plot_condi1()
+  })
+  
+  observeEvent(input$resetBigram_hide, { 
+    reset("BigramsTopic_box")
+  })
+  
+  # Bigrams sentiment plot
+  data_wordsSenti <- reactive({
+    filtered <- dplyr::filter(data(), 
+                              Year %in% input$filter_bigrams_year,
+                              Month %in% input$filter_bigrams_month,
+                              Senti %in% input$filter_bigrams_sentiment)
+    
+    filtered %>% 
+      unnest_tokens(output = word, input = stop, token = "ngrams", n = 2) %>% 
+      drop_na(word) %>%
+      separate(word, c("word1", "word2"), sep = " ") %>% 
+      filter(!word1 %in% stop_words$word) %>%
+      filter(!word2 %in% stop_words$word) %>% 
+      unite(word,word1, word2, sep = " ") %>% 
+      count(word, sort = TRUE) %>% 
+      slice(1:10)
+  })
+  
+  plot_wordsSenti <- reactive({  
+    s <- ggplot(data_wordsSenti()) +
+      geom_bar(aes(reorder(word, n),n), stat = "identity", fill = "palevioletred4", color = "black", size = 0.2) + #meidumpurple4
+      theme_minimal() +
+      ylim(0,360) +
+      coord_flip() +
+      labs(
+        caption = "Data Source: TrustPilot Reviews of Zalando",
+        y = 'Number of mentions',
+        x = 'Words')
+    
+    ggplotly(s) %>% 
+      config(displayModeBar = TRUE) %>%                     # Display the bar
+      config(displaylogo = FALSE) %>%                       # Remove the logo
+      config(modeBarButtonsToRemove = c("zoomIn2d",         # Remove certain buttons
+                                        "zoomOut2d", 
+                                        "select2d",
+                                        "lasso2d", 
+                                        "autoScale2d",
+                                        "toggleSpikelines", 
+                                        "hoverClosestCartesian",
+                                        "hoverCompareCartesian")) %>% 
+      layout(xaxis=list(fixedrange=TRUE)) %>%               # Fix the x-axis, no zoom
+      layout(yaxis=list(fixedrange=TRUE))                   # Fix the y-axis, no zoom
+  })
+  
+  output$plotBigramsSentiment <- renderPlotly({
+    req(plot_wordsSenti())
+    plot_wordsSenti()
+  })
+  
+  
+  # Conditional panel for bigrams - Sentiment
+  observeEvent(input$resetBigram_hide, { 
+    reset("BigramsSenti_compare_tab")
+  })
+  
+  filS <- reactive({
+    dplyr::filter(data(), 
+                  Year %in% input$filter_more_year,
+                  Month %in% input$filter_more_month,
+                  Senti %in% input$filter_more_senti)
+  })
+  
+  plot_condiS<- reactive({
+    filS() %>% 
+      unnest_tokens(output = word, input = stop, token = "ngrams", n = 2) %>% 
+      drop_na(word) %>%
+      separate(word, c("word1", "word2"), sep = " ") %>% 
+      filter(!word1 %in% stop_words$word) %>%
+      filter(!word2 %in% stop_words$word) %>% 
+      unite(word,word1, word2, sep = " ") %>% 
+      count(word, sort = TRUE) %>% 
+      slice(1:10)
+  })
+  
+  plot_condi1S <- reactive({  
+    p <- ggplot(plot_condiS()) +
+      geom_bar(aes(reorder(word, n),n, fill = Senti), stat = "identity", fill = "palevioletred3", color = "black", size = 0.2) +
+      theme_minimal() +
+      ylim(0,360)+
+      coord_flip() +
+      labs(
+        caption = "Data Source: TrustPilot Reviews of Zalando",
+        y = 'Number of mentions',
+        x = 'Words')
+    
+    ggplotly(p) %>% 
+      config(displayModeBar = TRUE) %>%                     # Display the bar
+      config(displaylogo = FALSE) %>%                       # Remove the logo
+      config(modeBarButtonsToRemove = c("zoomIn2d",         # Remove certain buttons
+                                        "zoomOut2d", 
+                                        "select2d",
+                                        "lasso2d",
+                                        "autoScale2d",
+                                        "toggleSpikelines", 
+                                        "hoverClosestCartesian",
+                                        "hoverCompareCartesian")) %>% 
+      layout(xaxis=list(fixedrange=TRUE)) %>%               # Fix the x-axis, no zoom
+      layout(yaxis=list(fixedrange=TRUE))                   # Fix the y-axis, no zoom
+    
+  })
+  
+  output$plotMoreSenti_bigrams <- renderPlotly({
+    req(plot_condi1S())
+    plot_condi1S()
+  })
+  
+} # server end
+
+shinyApp(ui, server)
+```
+
